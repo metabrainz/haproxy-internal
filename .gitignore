@@ -1,0 +1,12 @@
+# Certs (never commit private keys)
+*.pem
+*.key
+*.csr
+*.srl
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

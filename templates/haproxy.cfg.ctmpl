@@ -1,0 +1,52 @@
+global
+    maxconn 4096
+    log stdout format raw local0
+    master-worker
+
+defaults
+    mode http
+    log global
+    option httplog
+    option dontlognull
+    option forwardfor
+    timeout connect 3s
+    timeout client 30s
+    timeout server 30s
+    retry-on conn-failure empty-response response-timeout
+    retries 2
+
+frontend stats
+    bind *:8404
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 10s
+
+frontend internal_https
+    bind *:443 ssl crt /etc/haproxy/ssl/internal.pem alpn h2,http/1.1
+    http-request set-header X-Forwarded-Proto https
+
+    # Route by path prefix
+    acl is_oauth path_beg /oauth2
+    use_backend oauth if is_oauth
+
+    # Future: add more internal services here
+    # acl is_mb_ws path_beg /ws/2
+    # use_backend musicbrainz-ws if is_mb_ws
+
+    default_backend oauth
+
+backend oauth
+    option httpchk GET /.well-known/openid-configuration
+    http-check expect status 200
+    balance roundrobin
+    default-server inter 5s fall 3 rise 2
+  {{- $oauth_tag := or (env "OAUTH_SERVICE_TAG") "prod" -}}
+  {{- $service := printf "%s.virtual-metabrainz-oauth-http" $oauth_tag -}}
+  {{- if service $service }}
+    {{- range service $service }}
+    server {{ .Node }}-{{ .Port }} {{ .Address }}:{{ .Port }} check
+    {{- end }}
+  {{- else }}
+    server fallback 127.0.0.1:65535 disabled
+  {{- end }}
